@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure File Upload</title>
+</head>
+
+<body>
+    <h1>Secure File Upload</h1>
+    <form id="uploadForm">
+        <label for="fileInput">Choose a file:</label>
+        <input type="file" id="fileInput" name="fileInput">
+        <button type="button" onclick="uploadFile()">Upload</button>
+    </form>
+    <script>
+        async function fetchPublicKey() {
+            try {
+                const response = await fetch('https://localhost:3243/getPublicKey'); // replace with your actual server URL
+                const data = await response.json();
+                return data.publicKey;
+            } catch (error) {
+                console.error('Error fetching public key:', error);
+                throw error;
+            }
+        }
+
+        async function generateSharedSecret(serverPublicKey) {
+
+            try {
+                const serverPublicKeyBuffer = base64ToArrayBuffer(serverPublicKey);
+                console.log("server public key buffer", serverPublicKeyBuffer);
+                // Import the server's public key
+                const importedServerPublicKey = await crypto.subtle.importKey(
+                    'spki',
+                    serverPublicKeyBuffer,
+                    { name: 'ECDH', namedCurve: 'P-256' },
+                    true, // Specify 'true' for extractable
+                    ['deriveKey', 'deriveBits']
+                );
+
+                // Generate a key pair for ECDH
+                const clientDH = await crypto.subtle.generateKey(
+                    { name: 'ECDH', namedCurve: 'P-256' },
+                    true, // Specify 'true' for extractable
+                    ['deriveKey', 'deriveBits']
+                );
+
+                // Derive the shared secret
+                const sharedSecretKey = await crypto.subtle.deriveKey(
+                    { name: 'ECDH', public: importedServerPublicKey },
+                    clientDH.privateKey,
+                    { name: 'AES-GCM', length: 256 },
+                    true, // Specify 'true' for extractable
+                    ['encrypt', 'decrypt']
+                );
+
+                // Use the derived key for encryption/decryption or other purposes
+                // Example: const encryptedData = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sharedSecretKey, dataToEncrypt);
+
+
+                // Convert the shared secret to base64 or use it directly, depending on your needs
+                const sharedSecret = arrayBufferToBase64(sharedSecretBuffer);
+                console.log('Client: Shared secret calculated', sharedSecret);
+            }
+            catch (error) {
+                console.error(error);
+            }
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const binaryLen = binaryString.length;
+            const bytes = new Uint8Array(binaryLen);
+            for (let i = 0; i < binaryLen; ++i) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function arrayBufferToBase64(arrayBuffer) {
+            const binary = new Uint8Array(arrayBuffer);
+            const base64 = btoa(String.fromCharCode(...binary));
+            return base64;
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+            try {
+                const publicKey = await fetchPublicKey();
+                console.log('Client: Public key received from server', publicKey);
+                await generateSharedSecret(publicKey);
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+
+</html>
